@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import abc
 import numpy as np
+import importlib
 import kmeans1d
-from ._utils import pandizator_decorator_in, pandizator_decorator_inout
-#from ..base import instantiate_obj
+from ._utils import pandizator
 
 __all__ = [
     'BinningBase',
@@ -29,12 +29,26 @@ __all__ = [
 ]
 
 
+def instantiate_obj(description):
+    """
+    Instantiates an object from a description
+    Args:
+        description (tuple): (module_name, class_name, params_dict)
+    Returns:
+        obj: the instantiated object
+    """
+
+    module = importlib.import_module(description[0])
+    class_ = getattr(module, description[1])
+    return class_(**description[2])
+
+
 class BinningBase(abc.ABC):
     """
     Base class for binning
     """
 
-    def fit(self, values) -> BinningBase:
+    def fit(self, values, **fit_params) -> BinningBase:
         """
         Fitting the binning to values
 
@@ -171,8 +185,8 @@ class InferredBinsBinning(BinningBase):
         # andrasva: could be lifted to BinningBase...
         self._widths = self._upper_bounds - self._lower_bounds
 
-    @pandizator_decorator_in
-    def fit(self, values) -> InferredBinsBinning:
+    @pandizator
+    def fit(self, values, **fit_params) -> InferredBinsBinning:
         """
         Fitting to data
 
@@ -185,7 +199,8 @@ class InferredBinsBinning(BinningBase):
         # mutate and return self to allow chain of member function calls
         self._init_internals(bins_sorted=np.unique(values))
         return self
-    @pandizator_decorator_in
+
+    @pandizator
     def transform(self, values):
         """
         Assign bin indices to the values in `values`
@@ -280,7 +295,7 @@ class PredefinedDiscreteBinning(BinningBase):
 
         self._lookup = self._lookup.astype(int)
 
-    @pandizator_decorator_in
+    @pandizator
     def transform(self, values):
         """
         Assign bin indices to the values in `values`
@@ -357,7 +372,7 @@ class PredefinedBinCentersBinning(BinningBase):
         self._upper_bounds = np.hstack([midpoints, np.array([np.inf])])
         self._widths = self._upper_bounds - self._lower_bounds
 
-    @pandizator_decorator_in
+    @pandizator
     def transform(self, values):
         """
         Assign bin indices to the values in `values`
@@ -436,7 +451,7 @@ class PredefinedBinRangesBinning(BinningBase):
         self._representatives = np.mean(self._bin_ranges, axis=1)
         self._widths = self._bin_ranges[:, 1] - self._bin_ranges[:, 0]
 
-    @pandizator_decorator_in
+    @pandizator
     def transform(self, values):
         """
         Assign bin indices to the values in `values`
@@ -528,8 +543,8 @@ class EqualWidthBinning(BinningBase):
             self._lower_bounds = self._binning._lower_bounds
             self._upper_bounds = self._binning._upper_bounds
 
-    @pandizator_decorator_in
-    def fit(self, values) -> EqualWidthBinning:
+    @pandizator
+    def fit(self, values, **fit_params) -> EqualWidthBinning:
         """
         Fitting to data
 
@@ -548,7 +563,7 @@ class EqualWidthBinning(BinningBase):
 
         return self
 
-    @pandizator_decorator_in
+    @pandizator
     def transform(self, values):
         """
         Assign bin indices to the values in `values`
@@ -619,8 +634,8 @@ class EqualFrequencyBinning(BinningBase):
         if binning_params is not None:
             self._binning = PredefinedBinRangesBinning(**binning_params)
 
-    @pandizator_decorator_in
-    def fit(self, values) -> EqualFrequencyBinning:
+    @pandizator
+    def fit(self, values, **fit_params) -> EqualFrequencyBinning:
         """
         Fitting to data
 
@@ -645,7 +660,7 @@ class EqualFrequencyBinning(BinningBase):
 
         self._binning = PredefinedBinRangesBinning(bin_ranges=bin_ranges)
 
-    @pandizator_decorator_in
+    @pandizator
     def transform(self, values):
         """
         Assign bin indices to the values in `values`
@@ -723,8 +738,8 @@ class KMeansClusteringBinning(BinningBase):
         if binning_params is not None:
             self._binning = PredefinedBinCentersBinning(**binning_params)
 
-    @pandizator_decorator_in
-    def fit(self, values):
+    @pandizator
+    def fit(self, values, **fit_params):
         """
         Fitting to data
 
@@ -738,7 +753,7 @@ class KMeansClusteringBinning(BinningBase):
         self._binning = PredefinedBinCentersBinning(bin_centers=centroids)
         return self
 
-    @pandizator_decorator_in
+    @pandizator
     def transform(self, values):
         """
         Assign bin indices to the values in `values`
@@ -795,7 +810,7 @@ class KMeansClusteringBinning(BinningBase):
         return {'n_bins': self._n_bins, 'binning_params': binning_params}
 
 
-class AdaptiveBinning:
+class AdaptiveBinning(BinningBase):
     def __init__(self, *, binning, value_distance_tolerance, min_weight=0):
         """
         Constructor of adaptive binning with adjustable bin ranges according to a weight vector and a weight limit
@@ -806,19 +821,18 @@ class AdaptiveBinning:
             min_weight: the minimum weight a bin should have. If this is not met for a given bin,
                                 the fit() method will adjust the bin's upper bound and the subsequent bin's lower bound.
         """
-
-        """if isinstance(binning, tuple):
+        if isinstance(binning, tuple):
             self.binning = instantiate_obj(binning)
         elif isinstance(binning, BinningBase):
             self.binning = binning
         else:
             self.binning = InferredBinsBinning()
-        """
 
         self.value_distance_tolerance = value_distance_tolerance
         self.min_weight = min_weight if min_weight is not None else 0
         self._bin_boundaries = None
 
+    @pandizator
     def fit(self, values, observed_values, weights, bins_below_threshold='keep'):
         """
         Fitting to data. If a min_weight is set the bins will be adjusted to include enough weight, starting with the lowest bin.
